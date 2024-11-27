@@ -1,0 +1,148 @@
+import pathlib
+from itertools import chain
+from typing import List
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class FormatError(ValueError):
+    """There is an error in the order or number of Guard lines detected"""
+    pass
+
+
+class ConfigurationBlock:
+    """A block of configuration lines.
+
+    Line are loaded at creation and can be added, or potentially
+    removed. Access to the lines is via the `data` property.
+
+    Lines are cleaned of leading a trailing whitespace on input,
+    this means the default platform line ending will be used.
+    """
+    def __init__(self, lines: List[str]):
+        """
+        @param lines str: An intial list of config lines
+        """
+        self.data = [x.strip() for x in lines]
+        self._orig_data = self.data[:]
+        self.order_dependent = True
+
+    @property
+    def changed(self):
+        """True if the lines are different from the ones loaded."""
+        if self.order_dependent:
+            return self.data != self._orig_data
+        else:
+            return sorted(self.data) != sorted(self._orig_data)
+
+    def reset(self):
+        """Set the files back to the original data"""
+        self.data = self._orig_data
+
+    @property
+    def out(self) -> str:
+        """A str representation of the data lines to enter into the file"""
+        return [f"{x}\n" for x in self.data]
+
+
+class Haranguer:
+    """A context manager that modifies content between guard lines in
+    configuration files.
+
+    Loads a configuration file into memory, allows modifications to content
+    between the guard lines, and writes the modified content back to the
+    file upon exit.
+    Content outside the guard lines remains unchanged.
+
+    Args:
+        filename (str): Path to the configuration file
+        app_name (str): Name of the app to mention in the Guard lines
+        instance_name (str): A extra distinguishing string for the
+         guard_line
+
+    Returms:
+        A ConfigurationBlock containing the lines inside the guard.
+    Raises:
+        FormatError if the Guardlines are misplaced/
+        anything that open() would raise.
+    """
+    def __init__(self, filename: str | pathlib.Path,
+                 app_name: str = "Haranguer", instance_name: str = "",
+                 comment_char='#'):
+        self.filename = filename
+        self.app_name = app_name
+        self.instance_name = instance_name
+        self.comment_char = comment_char
+        self.file = None
+        self.data = None
+        self.header = None
+        self.footer = None
+
+    def __enter__(self, ):
+        self.file = open(self.filename, "r+")
+        state = 'header'
+        self.footer = []
+        self.datalines = []
+        self.header = []
+        logger.debug(f"start => `{self.start_line}`")
+        logger.debug(f"end = > `{self.end_line}`")
+        for line in self.file:
+            logger.debug(f"Proc `{line.strip()}  "
+                         f"{line.strip() == self.end_line}"
+                         f" {line.strip()==self.start_line}`")
+            if line.strip() == self.start_line:
+                if state != 'header':
+                    raise FormatError("Multiple start lines seen")
+                state = 'datalines'
+            elif line.strip() == self.end_line:
+                if state == 'header':
+                    raise FormatError("End line seen before start line")
+                elif state == 'footer':
+                    raise FormatError("Multiple end lines seen")
+                state = "footer"
+            else:
+                self.__dict__[state].append(line)
+
+        self.data = ConfigurationBlock(self.datalines)
+        logger.debug(self.datalines)
+        return self.data
+
+    def __exit__(self, et, ev, tb):
+        logger.debug("exiting Haranguer")
+        if et is not None:
+            # An exeception was raise so we do nothing
+            # but pass it on.
+            self.file.close()
+            return False
+        if self.data.changed:
+            logger.debug("- data changed")
+            # Update file iff the data has changed
+            self.file.seek(0)
+            for line in chain(
+                    self.header,
+                    [self.start_line+"\n"],
+                    self.data.out,
+                    [self.end_line+"\n"],
+                    self.footer):
+                self.file.write(line)
+            self.file.truncate()
+
+        self.file.close()
+
+    @property
+    def start_line(self,):
+        """The start of block guard line"""
+        return self.guard_line('begin')
+
+    @property
+    def end_line(self):
+        """The end of block guard line"""
+        return self.guard_line('end  ')
+
+    def guard_line(self, start_end="begin"):
+        leader = "".join([self.comment_char] * 18)
+        instance_tag = f"/{self.instance_name}" if self.instance_name else ""
+        return f"""
+{leader} {start_end} Block - Generated by {self.app_name}{instance_tag} {leader}
+        """.strip()

@@ -1,0 +1,38 @@
+[project]
+name="harangued"
+version = "0.1"
+dependencies=[]
+requires-python = ">= 3.8"
+authors = [
+  {name = "Roger Gammans", email = "rgammans@gammascience.co.uk"},
+]
+description = "Update and manage other programs/system config files safely"
+license = {text = "GPLv3"}
+readme = "README.rst"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Text Processing :: General",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+]
+packages = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [ "*.py" ]
+exclude = [
+  "tests",
+  "tests/*",
+]
+
+[tool.tox]
+requires = ["tox>=4.18"]
+envlist = ["3.10", "3.11", "3.12", "3.13", "3.13t" ]
+
+[tool.tox.env_run_base]
+description = "Run test under {base_python}"
+commands = [["python3",  "-m", "unittest", "discover", "-s", "tests"]]
+
