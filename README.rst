@@ -1,6 +1,11 @@
 Harangued
 =========
 
+..  image:: https://github.com/GammaScience/harangued/actions/workflows/unittest.yml/badge.svg
+    :alt: Python package tests
+    :target: https://github.com/GammaScience/harangued/actions/workflows/unittest.yml
+
+
 Harangued is small library for managing adding additional lines
 to standard (and normally system) configuration files.
 
